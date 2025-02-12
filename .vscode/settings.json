@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "esp_wifi.h": "c",
+        "nvs_flash.h": "c",
+        "audio_stream.h": "c",
+        "esp_http_client.h": "c"
+    }
+}
