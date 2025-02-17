@@ -2,25 +2,22 @@
 #include <BluetoothSerial.h>
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
-#include <WiFi.h>
-#include <ESPAsyncWebServer.h>
-#include <AsyncTCP.h>
+#include <WiFi.h> 
 
 // 初始化蓝牙串口和 WebSocket 客户端
 BluetoothSerial SerialBT;
 WebSocketsClient webSocketTTS;
 WebSocketsClient webSocketASR;
-WebSocketsClient webSocketSpark;
-AsyncWebServer server(80); // 创建异步 Web 服务器实例
-
+WebSocketsClient webSocketSpark; 
 // 科大讯飞 API 的鉴权信息
 const char *appId = "57e5c152";
 const char *apiSecret = "2b4d77de806ece14675de7ed359cd995";
 const char *apiKey = "e92cfdec778718ef7348c8d4fb303893";
+ 
 
 // WiFi 配置信息
-char ssid[32] = "your_SSID";
-char password[32] = "your_PASSWORD";
+char ssid[32] = "Xiaomi_73A0_Wi-Fi5";
+char password[32] = "03031902";
 
 bool isPaired = false; // 标记是否已配对蓝牙设备
 String userInputText;  // 存储用户输入的文本
@@ -129,18 +126,23 @@ void webSocketSparkEvent(WStype_t type, uint8_t *payload, size_t length)
 void setup()
 {
   Serial.begin(115200);
-  SerialBT.begin("ESP32_BT"); // 蓝牙设备名称
+  // 初始化蓝牙串口并启用主模式
+  SerialBT.begin("Bose Mini II SE SoundLink", true); // 蓝牙设备名 
   Serial.println("设备已启动，现在可以配对蓝牙！");
 
-  // 链接到华为耳机 FreeBuds 5
-  if (SerialBT.connect("HUAWEI FreeBuds 5"))
+  // 循环链接直到成功配对华为耳机 FreeBuds 5
+  while (!isPaired)
   {
-    Serial.println("成功配对 HUAWEI FreeBuds 5");
-    isPaired = true;
-  }
-  else
-  {
-    Serial.println("配对 HUAWEI FreeBuds 5 失败");
+    if (SerialBT.connect("HUAWEI FreeBuds 5"))
+    {
+      Serial.println("成功配对 HUAWEI FreeBuds 5");
+      isPaired = true;
+    }
+    else
+    {
+      Serial.println("配对 HUAWEI FreeBuds 5 失败，重试中...");
+      delay(5000); // 等待 5 秒后重试
+    }
   }
 
   // 连接到 WiFi
@@ -167,33 +169,7 @@ void setup()
   webSocketTTS.setAuthorization(authString.c_str());
   webSocketASR.setAuthorization(authString.c_str());
   webSocketSpark.setAuthorization(authString.c_str());
-
-  // 设置 Web 服务器路由
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-            {
-              String html = "<form action=\"/setwifi\" method=\"POST\"><select name=\"ssid\">";
-              int n = WiFi.scanNetworks();
-              for (int i = 0; i < n; ++i)
-              {
-                html += "<option value=\"" + WiFi.SSID(i) + "\">" + WiFi.SSID(i) + "</option>";
-              }
-              html += "</select><input type=\"password\" name=\"password\" placeholder=\"Password\"><input type=\"submit\" value=\"Set WiFi\"></form>";
-              request->send(200, "text/html", html); });
-
-  server.on("/setwifi", HTTP_POST, [](AsyncWebServerRequest *request)
-            {
-              if (request->hasParam("ssid", true) && request->hasParam("password", true))
-              {
-                strcpy(ssid, request->getParam("ssid", true)->value().c_str());
-                strcpy(password, request->getParam("password", true)->value().c_str());
-                request->send(200, "text/plain", "WiFi 设置成功，请重启设备！");
-              }
-              else
-              {
-                request->send(400, "text/plain", "缺少 SSID 或密码！");
-              } });
-
-  server.begin();
+ 
 }
 
 void loop()
