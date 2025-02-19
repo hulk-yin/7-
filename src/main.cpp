@@ -16,13 +16,20 @@ const int sampleRate = 16000; // 或者 8000
 // 时间同步配置
 void setupTimeSync()
 {
-  configTime(0, 0, "pool.ntp.org"); // UTC时间
+  configTime(8 * 3600, 0, "cn.pool.ntp.org", "time.windows.com", "time.nist.gov"); // 中国时间
+  Serial.println("正在同步时间...");
   while (time(nullptr) < 100000)
   {
     delay(1000);
+    Serial.print(".");
   }
+  Serial.println("\n时间同步成功！");
 }
 
+bool isNetworkAvailable() {
+  WiFiClient client;
+  return client.connect("tts-api.xfyun.cn", 80);
+}
 
 void setup()
 {
@@ -37,6 +44,14 @@ void setup()
   }
   Serial.println("WiFi 连接成功！");
 
+  // 探测网络是否正常
+  if (!isNetworkAvailable()) {
+    Serial.println("网络连接失败！");
+  } else {
+    Serial.println("网络连接正常！");
+  }
+
+  setupTimeSync(); // 调用时间同步配置
   // 初始化 WebSocket 连接
   initWebSocketConnections();
 
@@ -49,7 +64,7 @@ void setup()
       .sample_rate = sampleRate,
       .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
       .channel_format = I2S_CHANNEL_FMT_ONLY_RIGHT,
-      .communication_format = I2S_COMM_FORMAT_I2S_MSB,
+      .communication_format = I2S_COMM_FORMAT_STAND_I2S, // 替换为新的常量
       .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
       .dma_buf_count = 8,
       .dma_buf_len = 64,
@@ -59,7 +74,11 @@ void setup()
   i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
   i2s_set_pin(I2S_NUM_0, NULL);
 
-  setupTimeSync(); // 调用时间同步配置
+
+  // 打印当前时间
+  time_t now = time(nullptr);
+  struct tm *timeinfo = localtime(&now);
+  Serial.printf("当前时间: %s", asctime(timeinfo));
 }
 
 void loop()

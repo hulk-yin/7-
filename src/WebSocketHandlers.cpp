@@ -60,22 +60,13 @@ void webSocketTTSEvent(WStype_t type, uint8_t *payload, size_t length)
 // ASR WebSocket 事件处理函数
 void webSocketASREvent(WStype_t type, uint8_t *payload, size_t length)
 {
-  static bool isConnected = false; // 添加一个静态变量来跟踪连接状态
   switch (type)
   {
   case WStype_DISCONNECTED:
-    if (isConnected)
-    {
       Serial.println("ASR 连接断开！");
-      isConnected = false;
-    }
     break;
   case WStype_CONNECTED:
-    if (!isConnected)
-    {
       Serial.println("ASR 连接成功！");
-      isConnected = true;
-    }
     break;
   case WStype_TEXT:
   {
@@ -91,7 +82,6 @@ void webSocketASREvent(WStype_t type, uint8_t *payload, size_t length)
     break;
   case WStype_ERROR:
     Serial.println("ASR 发生错误！");
-    isConnected = false;
     break;
   case WStype_PING:
     Serial.println("ASR 接收到 PING！");
@@ -148,27 +138,29 @@ void initWebSocketConnections()
   time_t now = time(nullptr);
   struct tm *timeinfo = gmtime(&now);
 
-  String hosturl = "wss://iat-api.xfyun.cn/v2/iat";
-  String authUrl = AuthUtils::assembleAuthUrl(hosturl, apiKey, apiSecret, *timeinfo);
-
-  // 初始化 WebSocket 连接并将鉴权信息写入 URL
+  // 初始化 ASR WebSocket 连接并将鉴权信息写入 URL 
+  String asrHost = "iat-api.xfyun.cn";
+  String asrPath = "/v2/iat";
+  String asrAuthUrl = AuthUtils::assembleAuthUrl(asrHost, asrPath, apiKey, apiSecret,  *timeinfo);
   webSocketASR.setReconnectInterval(5000); // 设置重连间隔
-  webSocketASR.beginSSL(authUrl.c_str(), 443);
+  webSocketASR.beginSSL(asrHost.c_str(), 443, (asrPath + asrAuthUrl).c_str(), "", ""); // 开始 SSL 连接
   webSocketASR.onEvent(webSocketASREvent);
 
-  // 初始化 TTS WebSocket 连接
-  String ttsUrl = "wss://tts-api.xfyun.cn/v2/tts";
-  String ttsAuthUrl = AuthUtils::assembleAuthUrl(ttsUrl, apiKey, apiSecret, *timeinfo);
-  webSocketTTS.setReconnectInterval(5000);
-  webSocketTTS.beginSSL(ttsAuthUrl.c_str(), 443);
-  webSocketTTS.onEvent(webSocketTTSEvent);
+  // // 初始化 TTS WebSocket 连接并将鉴权信息写入 URL 
+  // String ttsHost = "tts-api.xfyun.cn";
+  // String ttsPath = "/v2/tts";
+  // String ttsAuthUrl = AuthUtils::assembleAuthUrl(ttsHost, ttsPath, apiKey, apiSecret,  *timeinfo);
+  // webSocketTTS.setReconnectInterval(5000);
+  // webSocketTTS.beginSSL(ttsHost.c_str(), 443, (ttsPath + ttsAuthUrl).c_str(), "", "");
+  // webSocketTTS.onEvent(webSocketTTSEvent);
 
-  // 初始化 Spark WebSocket 连接
-  String sparkUrl = "wss://spark-api.xf-yun.com/v4.0/chat";
-  String sparkAuthUrl = AuthUtils::assembleAuthUrl(sparkUrl, apiKey, apiSecret, *timeinfo);
-  webSocketSpark.setReconnectInterval(5000);
-  webSocketSpark.beginSSL(sparkAuthUrl.c_str(), 443);
-  webSocketSpark.onEvent(webSocketSparkEvent);
+  // // 初始化 Spark WebSocket 连接并将鉴权信息写入 URL 
+  // String sparkHost = "spark-api.xf-yun.com";
+  // String sparkPath = "/v4.0/chat";
+  // String sparkAuthUrl = AuthUtils::assembleAuthUrl(sparkHost, sparkPath, apiKey, apiSecret,  *timeinfo);
+  // webSocketSpark.setReconnectInterval(5000);
+  // webSocketSpark.beginSSL(sparkHost.c_str(), 443, (sparkPath + sparkAuthUrl).c_str(), "", "");
+  // webSocketSpark.onEvent(webSocketSparkEvent);
 }
 
 void handleWebSocketLoops()
@@ -180,7 +172,17 @@ void handleWebSocketLoops()
 
 void sendASRData(uint8_t *data, size_t length)
 {
-  webSocketASR.sendBIN(data, length);
+  // 构建有效的 JSON 字符串
+  String jsonData = "{\"common\":{\"app_id\":\"" + String(appId) + "\"},";
+  jsonData += "\"business\":{\"language\":\"zh_cn\",\"domain\":\"iat\",\"accent\":\"mandarin\"},";
+  jsonData += "\"data\":{\"status\":1,\"format\":\"audio/L16;rate=16000\",\"encoding\":\"raw\",\"audio\":\"";
+
+  // 将音频数据转换为 base64 编码
+  String audioBase64 = base64::encode(data, length);
+  jsonData += audioBase64 + "\"}}";
+
+  // 发送数据到 ASR 服务
+  webSocketASR.sendTXT(jsonData);
 }
 
 // 获取RFC1123格式时间

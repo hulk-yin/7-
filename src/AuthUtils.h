@@ -7,9 +7,11 @@
 class AuthUtils
 {
 public:
-    static String assembleAuthUrl(const String &hosturl, const String &apiKey, const String &apiSecret, const struct tm &timeinfo);
+    static String assembleAuthUrl(const String &host,const String &path
+        , const String &apiKey, const String &apiSecret, const struct tm &timeinfo);
 
 private:
+    static String _buildHmacSha256Signature(const String &secret, const String &signString);
     static String _buildSignature(const String &secret, const String &signString);
     static String _urlEncode(const String &value);
     static String _timeToString(const struct tm &timeinfo);
