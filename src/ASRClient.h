@@ -4,18 +4,19 @@
 #include <Arduino.h>
 #include <WebSocketsClient.h>
 
-class ASRClient {
+class ASRClient
+{
 public:
-    ASRClient(const char* appId, const char* apiKey, const char* apiSecret);
+    ASRClient(const char *appId, const char *apiKey, const char *apiSecret);
     void init();
     void loop();
     void sendData(uint8_t *data, size_t length);
 
 private:
     WebSocketsClient webSocket;
-    const char* appId;
-    const char* apiKey;
-    const char* apiSecret;
+    const char *appId;
+    const char *apiKey;
+    const char *apiSecret;
 
     static void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
 };
