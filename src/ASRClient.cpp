@@ -15,12 +15,16 @@ extern const char *apiKey;
 // 定义缓冲区和相关变量
 #define AUDIO_CHUNK_SIZE 1280
 #define SEND_INTERVAL 40
-#define SILENCE_THRESHOLD 5 * 1000 // 5秒无声音阈值
+#define SILENCE_THRESHOLD 5 * 1000  // 5秒无声音阈值
+#define ENERGY_THRESHOLD 50         // 单样本能量阈值（最小值）
+#define CONSECUTIVE_ACTIVE_FRAMES 3 // 连续有效帧数判定
 
 std::vector<uint8_t> audioBuffer;
 unsigned long lastSendTime = 0;
 unsigned long lastAudioTime = 0;
-int sendStatus = -1; // -1: 不发送, 0: 首帧, 1: 正常发送, 2: 结束帧
+int sendStatus = -1;          // -1: 不发送, 0: 首帧, 1: 正常发送, 2: 结束帧
+int activeFrameCounter = 0;   // 有效帧计数器
+int inactiveFrameCounter = 0; // 无效帧计数器
 
 ASRClient::ASRClient(const char *appId, const char *apiKey, const char *apiSecret)
     : appId(appId), apiKey(apiKey), apiSecret(apiSecret) {}
@@ -58,46 +62,32 @@ void ASRClient::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 
 void ASRClient::init()
 {
-  // 获取当前时间戳
   time_t now = time(nullptr);
   struct tm *timeinfo = gmtime(&now);
-
-  // 组装鉴权 URL
   String asrHost = "iat-api.xfyun.cn";
   String asrPath = "/v2/iat";
   String asrAuthUrl = AuthUtils::assembleAuthUrl(asrHost, asrPath, apiKey, apiSecret, *timeinfo);
-
-  // 初始化 WebSocket 连接并将鉴权信息写入 URL
-  webSocket.setReconnectInterval(5000);                                             // 设置重连间隔
-  webSocket.beginSSL(asrHost.c_str(), 443, (asrPath + asrAuthUrl).c_str(), "", ""); // 开始 SSL 连接
+  webSocket.setReconnectInterval(5000);
+  webSocket.beginSSL(asrHost.c_str(), 443, (asrPath + asrAuthUrl).c_str(), "", "");
   webSocket.onEvent(webSocketEvent);
 }
 
 void ASRClient::loop()
 {
   webSocket.loop();
-
-  // 检查是否到了发送数据的时间
   unsigned long currentTime = millis();
   if (currentTime - lastSendTime >= SEND_INTERVAL)
   {
     lastSendTime = currentTime;
-
-    // 如果 sendStatus 为 -1，不做任何处理
     if (sendStatus == -1)
     {
       return;
     }
-
-    // 检查缓冲区中是否有足够的数据
     if (audioBuffer.size() >= AUDIO_CHUNK_SIZE || (sendStatus == 2 && !audioBuffer.empty()))
     {
-      // 构建有效的 JSON 字符串
       String jsonData = "{\"common\":{\"app_id\":\"" + String(appId) + "\"},";
       jsonData += "\"business\":{\"language\":\"zh_cn\",\"domain\":\"iat\",\"accent\":\"mandarin\"},";
       jsonData += "\"data\":{\"status\":";
-
-      // 根据 sendStatus 设置状态
       if (sendStatus == 2 && audioBuffer.empty())
       {
         jsonData += "2";
@@ -110,60 +100,79 @@ void ASRClient::loop()
       {
         jsonData += String(sendStatus);
       }
-
       jsonData += ",\"format\":\"audio/L16;rate=8000\",\"encoding\":\"raw\",\"audio\":\"";
-
-      // 将音频数据转换为 base64 编码
       String audioBase64 = base64::encode(audioBuffer.data(), AUDIO_CHUNK_SIZE);
       jsonData += audioBase64 + "\"}}";
-
-      // 发送数据到 ASR 服务
       webSocket.sendTXT(jsonData);
-
-      // 从缓冲区中移除已发送的数据
       audioBuffer.erase(audioBuffer.begin(), audioBuffer.begin() + AUDIO_CHUNK_SIZE);
-
-      // 更新发送状态
       if (sendStatus == 0)
       {
-        sendStatus = 1; // 首帧发送完成，设置为正常发送
+        sendStatus = 1;
       }
       lastAudioTime = currentTime;
+      if (sendStatus == 2 && audioBuffer.empty())
+      {
+        sendStatus = -1; // 重置状态
+        activeFrameCounter = 0;
+        inactiveFrameCounter = 0;
+      }
     }
   }
 }
 
 void ASRClient::sendData(uint8_t *data, size_t length)
 {
-  // 检查音频数据是否有效
+  if (length == 0 || length % 2 != 0)
+    return;                                         // 无效输入检查
+  audioBuffer.reserve(audioBuffer.size() + length); // 预分配空间
+
+  uint32_t frameEnergy = 0;
   bool hasValidAudio = false;
-  for (size_t i = 0; i < length; ++i)
+
+  // 计算帧能量（16位PCM）
+  for (size_t i = 0; i < length; i += 2)
   {
-    if (data[i] > 0)
+    int16_t sample = (int16_t)(data[i] | (data[i + 1] << 8)); // 小端序
+    frameEnergy += abs(sample);
+  }
+
+  // 动态噪声基底
+  static uint32_t noiseFloor = 100; // 初始值
+  if (sendStatus == -1 || sendStatus == 2)
+  {
+    noiseFloor = (noiseFloor * 7 + frameEnergy) / 8; // 仅在非语音状态更新
+  }
+
+  // 有效音频判断
+  if (frameEnergy > std::max(static_cast<uint32_t>(noiseFloor * 1.3), static_cast<uint32_t>(ENERGY_THRESHOLD)))
+  {
+    activeFrameCounter++;
+    inactiveFrameCounter = 0;
+    if (activeFrameCounter >= CONSECUTIVE_ACTIVE_FRAMES)
     {
       hasValidAudio = true;
-      break;
+    }
+  }
+  else
+  {
+    inactiveFrameCounter++;
+    if (inactiveFrameCounter >= CONSECUTIVE_ACTIVE_FRAMES)
+    {
+      activeFrameCounter = 0;
     }
   }
 
   if (hasValidAudio)
   {
-    // 将音频数据添加到缓冲区
     audioBuffer.insert(audioBuffer.end(), data, data + length);
     lastAudioTime = millis();
-
-    // 如果当前状态为-1，发送首帧
     if (sendStatus == -1)
     {
       sendStatus = 0;
     }
   }
-  else
+  else if (sendStatus != -1 && millis() - lastAudioTime >= SILENCE_THRESHOLD)
   {
-    // 检查是否超过静默阈值
-    if (millis() - lastAudioTime >= SILENCE_THRESHOLD)
-    {
-      sendStatus = 2; // 设置为结束帧
-    }
+    sendStatus = 2; // 设置为结束帧
   }
 }
