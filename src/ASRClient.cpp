@@ -44,6 +44,8 @@ void ASRClient::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
     break;
   case WStype_BIN:
     Serial.printf("ASR 接收到二进制数据，长度：%u\n", length);
+    // 打印结果
+    
     break;
   case WStype_ERROR:
     Serial.println("ASR 发生错误！");
@@ -70,17 +72,20 @@ void ASRClient::init()
   webSocket.setReconnectInterval(5000);
   webSocket.beginSSL(asrHost.c_str(), 443, (asrPath + asrAuthUrl).c_str(), "", "");
   webSocket.onEvent(webSocketEvent);
+  Serial.println("ASR 初始化完成！");
 }
 
 void ASRClient::loop()
 {
   webSocket.loop();
   unsigned long currentTime = millis();
+  // Serial.printf("当前时间：%lu, 上次发送时间：%lu\n", currentTime, lastSendTime);
   if (currentTime - lastSendTime >= SEND_INTERVAL)
   {
     lastSendTime = currentTime;
     if (sendStatus == -1)
     {
+      Serial.println("当前状态：不发送");
       return;
     }
     if (audioBuffer.size() >= AUDIO_CHUNK_SIZE || (sendStatus == 2 && !audioBuffer.empty()))
@@ -104,6 +109,7 @@ void ASRClient::loop()
       String audioBase64 = base64::encode(audioBuffer.data(), AUDIO_CHUNK_SIZE);
       jsonData += audioBase64 + "\"}}";
       webSocket.sendTXT(jsonData);
+      Serial.printf("发送数据，状态：%d, 缓冲区大小：%u\n", sendStatus, audioBuffer.size());
       audioBuffer.erase(audioBuffer.begin(), audioBuffer.begin() + AUDIO_CHUNK_SIZE);
       if (sendStatus == 0)
       {
@@ -126,6 +132,8 @@ void ASRClient::sendData(uint8_t *data, size_t length)
     return;                                         // 无效输入检查
   audioBuffer.reserve(audioBuffer.size() + length); // 预分配空间
 
+  // Serial.printf("接收到音频数据，长度：%u\n", length);
+
   uint32_t frameEnergy = 0;
   bool hasValidAudio = false;
 
@@ -140,11 +148,13 @@ void ASRClient::sendData(uint8_t *data, size_t length)
   static uint32_t noiseFloor = 100; // 初始值
   if (sendStatus == -1 || sendStatus == 2)
   {
-    noiseFloor = (noiseFloor * 7 + frameEnergy) / 8; // 仅在非语音状态更新
+    noiseFloor = (noiseFloor * 15 + frameEnergy) / 16; // 仅在非语音状态更新
   }
 
+  Serial.printf("帧能量：%u, 噪声基底：%u\n", frameEnergy, noiseFloor);
+
   // 有效音频判断
-  if (frameEnergy > std::max(static_cast<uint32_t>(noiseFloor * 1.3), static_cast<uint32_t>(ENERGY_THRESHOLD)))
+  if (frameEnergy > std::max(static_cast<uint32_t>(noiseFloor * 1.2), static_cast<uint32_t>(ENERGY_THRESHOLD)))
   {
     activeFrameCounter++;
     inactiveFrameCounter = 0;
@@ -164,15 +174,21 @@ void ASRClient::sendData(uint8_t *data, size_t length)
 
   if (hasValidAudio)
   {
+    Serial.println("检测到有效音频");
+  }
+  
     audioBuffer.insert(audioBuffer.end(), data, data + length);
     lastAudioTime = millis();
     if (sendStatus == -1)
     {
       sendStatus = 0;
     }
-  }
-  else if (sendStatus != -1 && millis() - lastAudioTime >= SILENCE_THRESHOLD)
+  // }
+  // else
+  
+  if (sendStatus != -1 && millis() - lastAudioTime >= SILENCE_THRESHOLD)
   {
+    Serial.println("检测到静音，设置为结束帧");
     sendStatus = 2; // 设置为结束帧
   }
 }

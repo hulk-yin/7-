@@ -1,6 +1,7 @@
 #include "AuthUtils.h"
 #include <base64.h>
 #include <Crypto.h>    
+#include <mbedtls/md.h>
 
   
 
@@ -38,15 +39,22 @@ String AuthUtils::_buildHmacSha256Signature(
   const String &secret,
   const String &signString)
 {
-  SHA256HMAC hmac(reinterpret_cast<const unsigned char *>(secret.c_str()), secret.length());
-  hmac.doUpdate(reinterpret_cast<const unsigned char *>(signString.c_str()), signString.length());
-  byte hmacResult[32];
-  hmac.doFinal(hmacResult);
-  String signature = base64::encode(hmacResult, 32);
-  signature.replace("\n", "");
-  return signature;
+  uint8_t hmacResult[32]; // SHA256结果为32字节
+    
+  // 初始化HMAC环境
+  mbedtls_md_context_t ctx;
+  mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+    
+  mbedtls_md_init(&ctx);
+  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1); // 1表示使用HMAC
+  mbedtls_md_hmac_starts(&ctx, (const unsigned char*)secret.c_str(), secret.length());
+  mbedtls_md_hmac_update(&ctx, (const unsigned char*)signString.c_str(), signString.length());
+  mbedtls_md_hmac_finish(&ctx, hmacResult);
+  mbedtls_md_free(&ctx);
+    
+  // 将结果转换为十六进制字符串
+  return bytesToHex(hmacResult, 32);
 }
-
 
 String AuthUtils::_buildSignature(
     const String &secret,
@@ -113,4 +121,21 @@ String AuthUtils::_timeToString(const struct tm &timeinfo)
   char buffer[30];
   strftime(buffer, sizeof(buffer), "%a, %d %b %Y %H:%M:%S GMT", &timeinfo);
   return String(buffer);
+}
+
+String AuthUtils::generateHmacSha256Signature(const String& data, const String& key) {
+    return _buildHmacSha256Signature(data, key);
+}
+
+String AuthUtils::bytesToHex(const uint8_t* bytes, size_t length) {
+    String result;
+    result.reserve(length * 2); // 预分配内存
+    
+    for (size_t i = 0; i < length; i++) {
+        char hex[3];
+        sprintf(hex, "%02x", bytes[i]);
+        result += hex;
+    }
+    
+    return result;
 }

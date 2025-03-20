@@ -39,3 +39,8 @@ void handleWebSocketLoops()
   ttsClient.loop();
   sparkClient.loop();
 }
+
+void sendASRData(uint8_t *data, size_t length)
+{
+  asrClient.sendData(data, length);
+}
