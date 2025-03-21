@@ -36,6 +36,8 @@ public:
   // 日志打印接口
   void printLog(const char* text, int line = 0);
   void printLog(String text, int line = 0);
+  void addLogLine(const char *text, int line);
+  void flushLog();
   
   // 清屏
   void clear();
@@ -48,8 +50,8 @@ public:
   void showStatus(const char* line1, int line = 0); // 新增的重载函数
   
   // 错误处理
-  bool checkAndResetOnError();
-  
+  bool checkAndResetOnError(); 
+
 private:
   U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2;
   bool displayError;
