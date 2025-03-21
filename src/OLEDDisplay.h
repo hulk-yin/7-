@@ -27,6 +27,9 @@ public:
   // 测试屏幕边界
   void testScreenBoundaries();
   
+  // 测试显示功能
+  void testDisplay();
+  
   // 显示开机画面
   void showBootScreen();
   

@@ -1,42 +1,78 @@
 #include <Arduino.h>
-#include "OLEDDisplay.h"
+#include "AudioProcessor.h"
+#include "ASRClient.h"
+#include "WebSocketHandlers.h"
+#include "OLEDDisplay.h" // 改为使用OLEDDisplay
 
-// 创建OLED显示对象
-OLEDDisplay display;
+// 定义引脚
+#define I2S_SCK_PIN 26
+#define I2S_WS_PIN  25
+#define I2S_SD_PIN  33
+
+// 创建对象
+AudioProcessor audioProcessor(I2S_SCK_PIN, I2S_WS_PIN, I2S_SD_PIN);
+extern ASRClient asrClient; // 从WebSocketHandlers.cpp中导入已定义的ASRClient实例
+OLEDDisplay oledDisplay; // 使用oledDisplay类
+
+unsigned long lastDisplayUpdate = 0;
+const unsigned long displayUpdateInterval = 20; // 20ms更新一次显示
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("启动OLED 128x32屏幕测试");
   
-  // 扫描I2C设备
-  display.scanI2CDevices();
+  // 初始化WiFi连接和ASR
+  initWebSocketConnections();
   
-  // 初始化显示屏
-  if (display.begin()) {
-    // 测试屏幕边界
-    display.testScreenBoundaries();
-    Serial.println("已绘制屏幕边界测试图形");
-    
-    // 延时查看边界测试结果
-    delay(3000);
-    
-    // 显示开机画面
-    display.showBootScreen();
-    Serial.println("显示开机画面");
-    
-    delay(2000);
-  }
+  // 初始化音频处理器
+  audioProcessor.init();
+  audioProcessor.setASRClient(&asrClient);
+  
+  // 初始化显示
+  oledDisplay.begin(); // 修改为begin方法
+  oledDisplay.showBootScreen(); // 使用oledDisplay的启动画面
+  
+  // 启动语音识别
+  audioProcessor.startSpeechRecognition();
 }
 
 void loop() {
-  // 检查并处理显示错误
-  if (display.checkAndResetOnError()) {
-    // 显示正常时更新状态信息
-    display.showStatus(millis() / 1000, true);
-  } else {
-    // 当显示有问题时，输出到Serial控制台
-    Serial.println("显示屏当前状态异常，等待重新初始化...");
-  }
+  // 处理WebSocket事件
+  handleWebSocketLoops();
   
-  delay(1000);
+  // 捕获音频
+  audioProcessor.captureAudio();
+  audioProcessor.processAudio();
+  
+  // 更新ASR状态
+  audioProcessor.updateASR();
+  
+  // 检查并重置显示错误
+  oledDisplay.checkAndResetOnError();
+  
+  // 更新显示
+  unsigned long currentTime = millis();
+  if (currentTime - lastDisplayUpdate >= displayUpdateInterval) {
+    lastDisplayUpdate = currentTime;
+    
+    // 清除显示缓冲区
+    oledDisplay.clear();
+    
+    // 显示识别的文本
+    String recognizedText = audioProcessor.getRecognizedText();
+    if (recognizedText.length() > 0) {
+      // 限制文本长度，避免溢出
+      if (recognizedText.length() > 20) {
+        recognizedText = recognizedText.substring(0, 17) + "...";
+      }
+      
+      // 使用printLog方法
+      oledDisplay.printLog(recognizedText, 0);
+      
+      // 也打印到串口以便调试
+      Serial.println("识别文本: " + recognizedText);
+    } else {
+      // 显示状态信息
+      oledDisplay.showStatus(millis() / 1000, true);
+    }
+  }
 }

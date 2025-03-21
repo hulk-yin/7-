@@ -7,20 +7,44 @@ OLEDDisplay::OLEDDisplay()
 }
 
 bool OLEDDisplay::begin() {
-  // 初始化I2C总线
+  // 先检查是否已有其他库使用I2C总线
   Wire.begin(SDA_PIN, SCL_PIN);
+  delay(100); // 给I2C总线启动一些时间
+  
+  // 检查总线上是否有设备
+  scanI2CDevices();
   
   // 初始化U8g2屏幕
+  u8g2.setI2CAddress(SCREEN_ADDRESS * 2); // U8G2需要左移一位的地址
   bool success = u8g2.begin();
   if (!success) {
-    Serial.println("显示屏初始化失败");
+    Serial.println("U8G2显示屏初始化失败");
     displayError = true;
     return false;
   }
   
   u8g2.enableUTF8Print(); // 启用UTF8文本支持
-  Serial.println("显示屏初始化成功");
+  u8g2.setContrast(255);  // 最大对比度
+  
+  // 测试显示
+  testDisplay();
+  
+  Serial.println("U8G2显示屏初始化成功");
   return true;
+}
+
+void OLEDDisplay::testDisplay() {
+  // 测试显示是否正常工作
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_10x20_tf); // 使用较大字体确保可见
+  u8g2.setCursor(0, 20);
+  u8g2.print("U8G2测试");
+  u8g2.sendBuffer();
+  delay(1000);
+  
+  // 清除显示
+  u8g2.clearBuffer();
+  u8g2.sendBuffer();
 }
 
 void OLEDDisplay::scanI2CDevices() {
@@ -73,16 +97,11 @@ void OLEDDisplay::testScreenBoundaries() {
   u8g2.drawPixel(SCREEN_WIDTH-1, SCREEN_HEIGHT-1);
   
   // 显示屏幕尺寸文本
-  u8g2.setFont(u8g2_font_6x10_tf);
-  u8g2.setCursor(10, 12);
+  u8g2.setFont(u8g2_font_10x20_tf); // 使用较大字体确保可见
+  u8g2.setCursor(10, 20);
   u8g2.print(SCREEN_WIDTH);
   u8g2.print("x");
   u8g2.print(SCREEN_HEIGHT);
-  
-  // 显示屏幕地址
-  u8g2.setCursor(10, 24);
-  u8g2.print("Addr:0x");
-  u8g2.print(SCREEN_ADDRESS, HEX);
   
   u8g2.sendBuffer();
 }
@@ -112,15 +131,20 @@ void OLEDDisplay::showBootScreen() {
 void OLEDDisplay::printLog(const char* text, int line) {
   if (displayError) return;
   
+  // 清除前确保不影响显示
+  if (line == 0) {
+    u8g2.clearBuffer();
+  }
+  
   // 每行文字大致高度14像素，最多2行
-  int y = line * 14 + 12;
+  int y = line * 16 + 15; // 增加行高和基线位置
   if (y > SCREEN_HEIGHT) y = SCREEN_HEIGHT - 2;
   
-  u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_wqy12_t_chinese1);
   u8g2.setCursor(0, y);
   u8g2.print(text);
   u8g2.sendBuffer();
+  
   // 修复条件表达式错误
   if (u8g2.getBufferTileHeight() <= 0) {
     displayError = true;
