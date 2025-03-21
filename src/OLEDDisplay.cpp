@@ -1,205 +1,257 @@
 #include "OLEDDisplay.h"
 
-OLEDDisplay::OLEDDisplay() 
-  : u8g2(U8G2_R0, U8X8_PIN_NONE), 
-    displayError(false), 
-    lastDisplayResetAttempt(0) {
+OLEDDisplay::OLEDDisplay()
+    : u8g2(U8G2_R0, U8X8_PIN_NONE),
+      displayError(false),
+      lastDisplayResetAttempt(0)
+{
 }
 
-bool OLEDDisplay::begin() {
+bool OLEDDisplay::begin()
+{
   // 初始化I2C总线
   Wire.begin(SDA_PIN, SCL_PIN);
-  
+
   // 初始化U8g2屏幕
   bool success = u8g2.begin();
-  if (!success) {
+  if (!success)
+  {
     Serial.println("显示屏初始化失败");
     displayError = true;
     return false;
   }
-  
+
   u8g2.enableUTF8Print(); // 启用UTF8文本支持
   Serial.println("显示屏初始化成功");
   return true;
 }
 
-void OLEDDisplay::scanI2CDevices() {
+void OLEDDisplay::scanI2CDevices()
+{
   byte error, address;
   int deviceCount = 0;
-  
+
   Serial.println("扫描I2C总线上的设备...");
-  
-  for(address = 1; address < 127; address++) {
+
+  for (address = 1; address < 127; address++)
+  {
     Wire.beginTransmission(address);
     error = Wire.endTransmission();
-    
-    if (error == 0) {
+
+    if (error == 0)
+    {
       Serial.print("发现I2C设备，地址: 0x");
-      if (address < 16) {
+      if (address < 16)
+      {
         Serial.print("0");
       }
       Serial.print(address, HEX);
-      if (address == SCREEN_ADDRESS) {
+      if (address == SCREEN_ADDRESS)
+      {
         Serial.print(" (与配置的屏幕地址匹配)");
-      } else if (address == 0x3D) {
+      }
+      else if (address == 0x3D)
+      {
         Serial.print(" (可能是OLED屏幕备用地址)");
       }
       Serial.println();
       deviceCount++;
     }
   }
-  
-  if (deviceCount == 0) {
+
+  if (deviceCount == 0)
+  {
     Serial.println("未找到I2C设备！检查接线。");
-  } else {
+  }
+  else
+  {
     Serial.print("共发现 ");
     Serial.print(deviceCount);
     Serial.println(" 个I2C设备");
   }
 }
 
-void OLEDDisplay::testScreenBoundaries() {
-  if (displayError) return;
-  
+void OLEDDisplay::testScreenBoundaries()
+{
+  if (displayError)
+    return;
+
   u8g2.clearBuffer();
-  
+
   // 绘制边框
   u8g2.drawFrame(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-  
+
   // 在四个角落标记像素
   u8g2.drawPixel(0, 0);
-  u8g2.drawPixel(SCREEN_WIDTH-1, 0);
-  u8g2.drawPixel(0, SCREEN_HEIGHT-1);
-  u8g2.drawPixel(SCREEN_WIDTH-1, SCREEN_HEIGHT-1);
-  
+  u8g2.drawPixel(SCREEN_WIDTH - 1, 0);
+  u8g2.drawPixel(0, SCREEN_HEIGHT - 1);
+  u8g2.drawPixel(SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1);
+
   // 显示屏幕尺寸文本
   u8g2.setFont(u8g2_font_6x10_tf);
   u8g2.setCursor(10, 12);
   u8g2.print(SCREEN_WIDTH);
   u8g2.print("x");
   u8g2.print(SCREEN_HEIGHT);
-  
+
   // 显示屏幕地址
   u8g2.setCursor(10, 24);
   u8g2.print("Addr:0x");
   u8g2.print(SCREEN_ADDRESS, HEX);
-  
+
   u8g2.sendBuffer();
 }
 
-void OLEDDisplay::showBootScreen() {
-  if (displayError) return;
-  
+void OLEDDisplay::showBootScreen()
+{
+  if (displayError)
+    return;
+
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_wqy12_t_chinese1);
-  
+
   // 显示开机信息
   u8g2.setCursor(0, 12);
   u8g2.print("系统启动中...");
-  
+
   u8g2.setCursor(0, 26);
   u8g2.print("OLED显示屏初始化完成");
-  
+
   u8g2.sendBuffer();
   // 修复条件表达式错误
-  if (u8g2.getBufferTileHeight() <= 0) {
+  if (u8g2.getBufferTileHeight() <= 0)
+  {
     displayError = true;
     lastDisplayResetAttempt = millis();
     Serial.println("显示开机画面时发生错误");
   }
 }
 
-void OLEDDisplay::printLog(const char* text, int line) {
-  if (displayError) return;
-  
+void OLEDDisplay::printLog(const char *text, int line)
+{
+  if (displayError)
+    return;
+
   // 每行文字大致高度14像素，最多2行
   int y = line * 14 + 12;
-  if (y > SCREEN_HEIGHT) y = SCREEN_HEIGHT - 2;
-  
+  if (y > SCREEN_HEIGHT)
+    y = SCREEN_HEIGHT - 2;
+
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_wqy12_t_chinese1);
   u8g2.setCursor(0, y);
   u8g2.print(text);
   u8g2.sendBuffer();
   // 修复条件表达式错误
-  if (u8g2.getBufferTileHeight() <= 0) {
+  if (u8g2.getBufferTileHeight() <= 0)
+  {
     displayError = true;
     lastDisplayResetAttempt = millis();
     Serial.println("打印日志时发生错误");
   }
 }
 
-void OLEDDisplay::printLog(String text, int line) {
+void OLEDDisplay::printLog(String text, int line)
+{
   printLog(text.c_str(), line);
 }
 
-void OLEDDisplay::clear() {
-  if (displayError) return;
-  
+void OLEDDisplay::clear()
+{
+  if (displayError)
+    return;
+
   u8g2.clearBuffer();
   u8g2.sendBuffer();
   // 修复条件表达式错误
-  if (u8g2.getBufferTileHeight() <= 0) {
+  if (u8g2.getBufferTileHeight() <= 0)
+  {
     displayError = true;
     lastDisplayResetAttempt = millis();
     Serial.println("清屏时发生错误");
   }
 }
 
-void OLEDDisplay::refresh() {
-  if (displayError) return;
-  
+void OLEDDisplay::refresh()
+{
+  if (displayError)
+    return;
+
   u8g2.sendBuffer();
   // 修复条件表达式错误
-  if (u8g2.getBufferTileHeight() <= 0) {
+  if (u8g2.getBufferTileHeight() <= 0)
+  {
     displayError = true;
     lastDisplayResetAttempt = millis();
     Serial.println("刷新显示时发生错误");
   }
 }
 
-void OLEDDisplay::showStatus(unsigned long uptime, bool isNormal) {
-  if (displayError) return;
-  
+void OLEDDisplay::showStatus(unsigned long uptime, bool isNormal)
+{
+  if (displayError)
+    return;
+
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_wqy12_t_chinese1);
-  
+
   // 第一行：尺寸和地址
   u8g2.setCursor(0, 12);
   u8g2.print("尺寸:128x32 地址:0x");
   u8g2.print(SCREEN_ADDRESS, HEX);
-  
+
   // 第二行：运行时间和状态
   u8g2.setCursor(0, 28);
   u8g2.print("运行:");
   u8g2.print(uptime);
   u8g2.print("秒 状态:");
   u8g2.print(isNormal ? "正常" : "异常");
-  
+
   u8g2.sendBuffer();
   // 修复条件表达式错误
-  if (u8g2.getBufferTileHeight() <= 0) {
+  if (u8g2.getBufferTileHeight() <= 0)
+  {
     displayError = true;
     lastDisplayResetAttempt = millis();
     Serial.println("显示状态时发生错误");
   }
 }
 
-bool OLEDDisplay::checkAndResetOnError() {
-  if (displayError && (millis() - lastDisplayResetAttempt > resetInterval)) {
+void OLEDDisplay::showStatus(const char *line1, int line)
+{
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_6x10_tf);
+  if (line == 0)
+  {
+    u8g2.drawStr(0, 12, line1);
+  }
+  else
+  {
+    u8g2.drawStr(0, 24, line1);
+  }
+  u8g2.sendBuffer();
+}
+
+bool OLEDDisplay::checkAndResetOnError()
+{
+  if (displayError && (millis() - lastDisplayResetAttempt > resetInterval))
+  {
     Serial.println("尝试重新初始化显示屏...");
     lastDisplayResetAttempt = millis();
-    
+
     // 尝试重新初始化
-    if (u8g2.begin()) {
+    if (u8g2.begin())
+    {
       displayError = false;
       u8g2.enableUTF8Print();
       Serial.println("显示屏重新初始化成功");
       return true;
-    } else {
+    }
+    else
+    {
       Serial.println("显示屏重新初始化失败");
     }
   }
-  
+
   return !displayError;
 }

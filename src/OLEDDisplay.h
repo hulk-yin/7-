@@ -42,6 +42,7 @@ public:
   
   // 状态显示
   void showStatus(unsigned long uptime, bool isNormal = true);
+  void showStatus(const char* line1, int line = 0); // 新增的重载函数
   
   // 错误处理
   bool checkAndResetOnError();
