@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include "OLEDDisplay.h"
-#include <WiFi.h>
+#include "NetworkManager.h"
 
 // WiFi credentials
 const char *ssid = "your_SSID";         // 将 your_SSID 替换为你的 WiFi SSID
@@ -8,6 +8,8 @@ const char *password = "your_PASSWORD"; // 将 your_PASSWORD 替换为你的 WiF
 
 // 创建OLED显示对象
 OLEDDisplay display;
+// 创建网络管理对象
+NetworkManager *networkManager;
 
 void setup()
 {
@@ -33,34 +35,12 @@ void setup()
 
     delay(2000);
 
-    // 连接WiFi
-    WiFi.begin(ssid, password);
-    display.showStatus("正在连接WiFi...", 0);
-    Serial.println("正在连接WiFi...");
+    // 初始化网络管理器
+    networkManager = new NetworkManager(ssid, password, &display);
 
-    int timeout = 0;
-    while (WiFi.status() != WL_CONNECTED && timeout < 10)
-    {
-      delay(1000);
-      Serial.print(".");
-      timeout++;
-    }
+    // 连接WiFi并同步时间
+    networkManager->begin();
 
-    if (WiFi.status() == WL_CONNECTED)
-    {
-      Serial.println("");
-      Serial.println("WiFi连接成功");
-      Serial.print("IP 地址: ");
-      Serial.println(WiFi.localIP());
-      display.showStatus("WiFi已连接", 0);
-      display.showStatus(WiFi.localIP().toString().c_str(), 1);
-    }
-    else
-    {
-      Serial.println("");
-      Serial.println("WiFi连接失败");
-      display.showStatus("WiFi连接失败", 0);
-    }
     delay(2000);
   }
 }
@@ -70,8 +50,26 @@ void loop()
   // 检查并处理显示错误
   if (display.checkAndResetOnError())
   {
-    // 显示正常时更新状态信息
-    display.showStatus(millis() / 1000, true);
+    // 获取当前时间并显示
+    if (networkManager->isConnected())
+    {
+      struct tm timeinfo;
+      if (networkManager->getCurrentTime(&timeinfo))
+      {
+        char timeStr[20];
+        sprintf(timeStr, "%02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        display.showStatus(timeStr, 0);
+        display.showStatus("系统运行中", 1);
+      }
+      else
+      {
+        display.showStatus(millis() / 1000, true);
+      }
+    }
+    else
+    {
+      display.showStatus(millis() / 1000, true);
+    }
   }
   else
   {
