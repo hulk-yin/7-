@@ -131,10 +131,10 @@ void OLEDDisplay::showBootScreen() {
 void OLEDDisplay::printLog(const char* text, int line) {
   if (displayError) return;
   
-  // 清除前确保不影响显示
-  if (line == 0) {
-    u8g2.clearBuffer();
-  }
+    int y_start = line * 14; // 行的起始y坐标
+    u8g2.setDrawColor(0);    // 0表示黑色(清除)
+    u8g2.drawBox(0, y_start, SCREEN_WIDTH, 14); // 绘制覆盖整行的黑色矩形
+    u8g2.setDrawColor(1);    // 1表示白色(绘制)
   
   // 每行文字大致高度14像素，最多2行
   int y = line * 14 + 12; // 增加行高和基线位置
